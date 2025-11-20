@@ -231,3 +231,16 @@ class ShowtimeSeatsResponse(BaseModel):
     """Response for showtime seats"""
     showtime_id: int
     booked_seats: List[SeatResponse]
+
+class BookedSeatUpdate(BaseModel):
+    """Schema for updating a booked seat"""
+    status: Optional[str] = Field(None, description="Seat status (on_hold, booked, released)")
+    additional_minutes: Optional[int] = Field(None, ge=1, le=30, description="Additional minutes to extend hold (1-30)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "booked",
+                "additional_minutes": 5
+            }
+        }

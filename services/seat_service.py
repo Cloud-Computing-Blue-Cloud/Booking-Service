@@ -146,3 +146,99 @@ class SeatService:
             db.session.rollback()
             logger.error(f"Error extending seat hold: {str(e)}")
             return False, f"Failed to extend hold: {str(e)}"
+
+    @staticmethod
+    def get_booked_seat(booked_seat_id):
+        """Get a booked seat by ID"""
+        return BookedSeat.query.filter_by(
+            booked_seat_id=booked_seat_id,
+            is_deleted=False
+        ).first()
+
+    @staticmethod
+    def update_booked_seat(booked_seat_id, status=None, additional_minutes=None):
+        """
+        Update a booked seat
+
+        Args:
+            booked_seat_id: ID of the booked seat
+            status: New status (optional)
+            additional_minutes: Additional minutes to extend hold (optional)
+
+        Returns:
+            tuple: (success boolean, message or seat object)
+        """
+        from datetime import datetime
+
+        try:
+            seat = SeatService.get_booked_seat(booked_seat_id)
+            if not seat:
+                return False, "Booked seat not found"
+
+            if status:
+                valid_statuses = ['on_hold', 'booked', 'released']
+                if status not in valid_statuses:
+                    return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+                
+                if status == 'booked' and seat.status == 'on_hold':
+                    seat.confirm()
+                elif status == 'released':
+                    seat.release()
+                else:
+                    seat.status = status
+                    seat.updated_at = datetime.utcnow()
+                    db.session.add(seat)
+
+            if additional_minutes is not None:
+                if seat.status != 'on_hold':
+                    return False, "Can only extend hold for seats with 'on_hold' status"
+                seat.extend_hold(additional_minutes)
+
+            db.session.commit()
+            logger.info(f"Booked seat updated: {booked_seat_id}")
+            return True, seat
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating booked seat: {str(e)}")
+            return False, f"Failed to update booked seat: {str(e)}"
+
+    @staticmethod
+    def delete_booked_seat(booked_seat_id):
+        """
+        Release/delete a booked seat
+
+        Args:
+            booked_seat_id: ID of the booked seat to release
+
+        Returns:
+            tuple: (success boolean, message)
+        """
+        from models.showtime import Showtime
+
+        try:
+            seat = SeatService.get_booked_seat(booked_seat_id)
+            if not seat:
+                return False, "Booked seat not found"
+
+            # Check if seat was booked before releasing
+            was_booked = seat.status == 'booked'
+            showtime_id = seat.showtime_id
+
+            # Release the seat
+            seat.release()
+
+            # Update showtime seats count if seat was booked
+            if was_booked:
+                showtime = Showtime.query.get(showtime_id)
+                if showtime:
+                    showtime.decrement_booked_seats(1)
+
+            db.session.commit()
+            logger.info(f"Booked seat released: {booked_seat_id}")
+            return True, "Seat released successfully"
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error releasing booked seat: {str(e)}")
+            return False, f"Failed to release seat: {str(e)}"

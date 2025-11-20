@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status, Query
 from schemas import (
     SeatAvailabilityCheck, SeatAvailabilityResponse,
     SeatMapResponse, ExtendHoldRequest, MessageResponse,
-    ShowtimeSeatsResponse
+    ShowtimeSeatsResponse, BookedSeatUpdate
 )
 from services.seat_service import SeatService
 import logging
@@ -150,6 +150,84 @@ async def extend_seat_hold(
         raise
     except Exception as e:
         logger.error(f"Error in extend_seat_hold: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.put(
+    "/seats/{booked_seat_id}",
+    response_model=dict,
+    summary="Update booked seat",
+    description="Update a booked seat (status, extend hold)"
+)
+async def update_booked_seat(booked_seat_id: int, seat_update: BookedSeatUpdate):
+    """
+    Update a booked seat.
+
+    - **booked_seat_id**: ID of the booked seat to update
+    - **status**: New status (on_hold, booked, released) - optional
+    - **additional_minutes**: Additional minutes to extend hold (1-30) - optional
+
+    Only provided fields will be updated.
+    """
+    try:
+        success, result = SeatService.update_booked_seat(
+            booked_seat_id,
+            status=seat_update.status,
+            additional_minutes=seat_update.additional_minutes
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result
+            )
+
+        return {
+            "message": "Booked seat updated successfully",
+            "seat": result.to_dict()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_booked_seat: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.delete(
+    "/seats/{booked_seat_id}",
+    response_model=MessageResponse,
+    summary="Release booked seat",
+    description="Release/delete a booked seat"
+)
+async def release_booked_seat(booked_seat_id: int):
+    """
+    Release a booked seat (soft delete).
+
+    This will:
+    - Release the seat (soft delete)
+    - Update showtime seat counts if the seat was booked
+    - Make the seat available for booking again
+    """
+    try:
+        success, message = SeatService.delete_booked_seat(booked_seat_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+
+        return {"message": message}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in release_booked_seat: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
