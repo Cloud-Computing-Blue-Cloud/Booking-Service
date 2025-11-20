@@ -4,7 +4,7 @@ FastAPI router for booking endpoints
 
 from fastapi import APIRouter, HTTPException, status
 from schemas import (
-    BookingCreate, BookingResponse, BookingConfirm,
+    BookingCreate, BookingResponse, BookingConfirm, BookingUpdate,
     MessageResponse, BookingCompleteResponse, UserBookingsResponse
 )
 from services.booking_service import BookingService
@@ -272,6 +272,87 @@ async def complete_booking(booking_id: int):
         raise
     except Exception as e:
         logger.error(f"Error in complete_booking: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.put(
+    "/{booking_id}",
+    response_model=dict,
+    summary="Update booking",
+    description="Update booking details (status, payment_id)"
+)
+async def update_booking(booking_id: int, booking_update: BookingUpdate):
+    """
+    Update a booking.
+
+    - **booking_id**: ID of the booking to update
+    - **status**: New status (pending, confirmed, cancelled) - optional
+    - **payment_id**: Payment ID to associate with booking - optional
+
+    Only provided fields will be updated.
+    """
+    try:
+        success, result = BookingService.update_booking(
+            booking_id,
+            status=booking_update.status,
+            payment_id=booking_update.payment_id
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result
+            )
+
+        return {
+            "message": "Booking updated successfully",
+            "booking": result.to_dict()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_booking: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.delete(
+    "/{booking_id}",
+    response_model=MessageResponse,
+    summary="Delete booking",
+    description="Soft delete a booking and release seats"
+)
+async def delete_booking_endpoint(booking_id: int):
+    """
+    Delete a booking (soft delete).
+
+    This will:
+    - Soft delete the booking record
+    - Release all held/booked seats
+    - Update showtime seat counts
+    - Refund payment if exists
+
+    The booking will be marked as deleted but not removed from the database.
+    """
+    try:
+        success, message = BookingService.delete_booking(booking_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+
+        return {"message": message}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in delete_booking_endpoint: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

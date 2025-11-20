@@ -3,7 +3,7 @@ FastAPI router for payment endpoints
 """
 
 from fastapi import APIRouter, HTTPException, status
-from schemas import PaymentCreate, PaymentResponse, MessageResponse
+from schemas import PaymentCreate, PaymentResponse, PaymentUpdate, MessageResponse
 from services.payment_service import PaymentService
 import logging
 
@@ -174,6 +174,81 @@ async def refund_payment(payment_id: int):
         raise
     except Exception as e:
         logger.error(f"Error in refund_payment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.put(
+    "/{payment_id}",
+    response_model=dict,
+    summary="Update payment",
+    description="Update payment details (amount, status)"
+)
+async def update_payment(payment_id: int, payment_update: PaymentUpdate):
+    """
+    Update a payment.
+
+    - **payment_id**: ID of the payment to update
+    - **amount**: New payment amount - optional
+    - **status**: New status (pending, completed, failed, refunded) - optional
+
+    Only provided fields will be updated.
+    """
+    try:
+        success, result = PaymentService.update_payment(
+            payment_id,
+            amount=payment_update.amount,
+            status=payment_update.status
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result
+            )
+
+        return {
+            "message": "Payment updated successfully",
+            "payment": result.to_dict()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_payment: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.delete(
+    "/{payment_id}",
+    response_model=MessageResponse,
+    summary="Delete payment",
+    description="Soft delete a payment record"
+)
+async def delete_payment_endpoint(payment_id: int):
+    """
+    Delete a payment (soft delete).
+
+    The payment will be marked as deleted but not removed from the database.
+    """
+    try:
+        success, message = PaymentService.delete_payment(payment_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+
+        return {"message": message}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in delete_payment_endpoint: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

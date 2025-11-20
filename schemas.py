@@ -100,6 +100,19 @@ class BookingConfirm(BaseModel):
             }
         }
 
+class BookingUpdate(BaseModel):
+    """Schema for updating a booking"""
+    status: Optional[str] = Field(None, description="Booking status (pending, confirmed, cancelled)")
+    payment_id: Optional[int] = Field(None, gt=0, description="Payment ID to associate with booking")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "confirmed",
+                "payment_id": 1
+            }
+        }
+
 # ============================================================================
 # PAYMENT SCHEMAS
 # ============================================================================
@@ -128,6 +141,19 @@ class PaymentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PaymentUpdate(BaseModel):
+    """Schema for updating a payment"""
+    amount: Optional[float] = Field(None, gt=0, le=100000, description="Payment amount")
+    status: Optional[str] = Field(None, description="Payment status (pending, completed, failed, refunded)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "amount": 25.00,
+                "status": "completed"
+            }
+        }
 
 # ============================================================================
 # SHOWTIME/SEAT AVAILABILITY SCHEMAS

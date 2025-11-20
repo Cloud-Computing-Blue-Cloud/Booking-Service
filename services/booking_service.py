@@ -187,3 +187,83 @@ class BookingService:
             db.session.rollback()
             logger.error(f"Error releasing expired holds: {str(e)}")
             return 0
+
+    @staticmethod
+    def update_booking(booking_id, status=None, payment_id=None):
+        """
+        Update a booking
+
+        Args:
+            booking_id: ID of the booking to update
+            status: New status (optional)
+            payment_id: Payment ID to associate (optional)
+
+        Returns:
+            tuple: (success boolean, message or booking object)
+        """
+        try:
+            booking = BookingService.get_booking(booking_id)
+            if not booking:
+                return False, "Booking not found"
+
+            if status:
+                valid_statuses = ['pending', 'confirmed', 'cancelled']
+                if status not in valid_statuses:
+                    return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+                booking.status = status
+                booking.updated_at = datetime.utcnow()
+
+            if payment_id:
+                booking.payment_id = payment_id
+                booking.updated_at = datetime.utcnow()
+
+            db.session.commit()
+            logger.info(f"Booking updated: {booking_id}")
+            return True, booking
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating booking: {str(e)}")
+            return False, f"Failed to update booking: {str(e)}"
+
+    @staticmethod
+    def delete_booking(booking_id):
+        """
+        Soft delete a booking
+
+        Args:
+            booking_id: ID of the booking to delete
+
+        Returns:
+            tuple: (success boolean, message)
+        """
+        try:
+            booking = BookingService.get_booking(booking_id, include_deleted=True)
+            if not booking:
+                return False, "Booking not found"
+
+            if booking.is_deleted:
+                return False, "Booking is already deleted"
+
+            # Soft delete the booking
+            booking.soft_delete()
+            booking.updated_at = datetime.utcnow()
+
+            # Release all seats
+            seats_count = booking.booked_seats.filter_by(is_deleted=False).count()
+            for seat in booking.booked_seats.filter_by(is_deleted=False).all():
+                seat.release()
+
+            # Update showtime seats count
+            showtime = Showtime.query.get(booking.showtime_id)
+            if showtime:
+                showtime.decrement_booked_seats(seats_count)
+
+            db.session.commit()
+            logger.info(f"Booking deleted: {booking_id}")
+            return True, "Booking deleted successfully"
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error deleting booking: {str(e)}")
+            return False, f"Failed to delete booking: {str(e)}"

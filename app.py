@@ -30,10 +30,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Database: {Config.SQLALCHEMY_DATABASE_URI.split('@')[1] if '@' in Config.SQLALCHEMY_DATABASE_URI else 'Not configured'}")
 
     # Create database tables
-    from database import db
-    from models import Booking, BookedSeat, Payment, Showtime
-    db.create_all()
-    logger.info("Database tables created/verified")
+    try:
+        from database import db
+        from models import Booking, BookedSeat, Payment, Showtime
+        db.create_all()
+        logger.info("Database tables created/verified")
+    except Exception as e:
+        logger.warning(f"Could not connect to database: {e}")
+        logger.warning("Application will start, but database operations will fail until database is available")
 
     yield
 
@@ -168,8 +172,13 @@ if __name__ == "__main__":
     import uvicorn
 
     # Create database tables
-    from models import Booking, BookedSeat, Payment, Showtime
-    db.create_all()
+    try:
+        from models import Booking, BookedSeat, Payment, Showtime
+        db.create_all()
+        logger.info("Database tables created/verified")
+    except Exception as e:
+        logger.warning(f"Could not connect to database: {e}")
+        logger.warning("Application will start, but database operations will fail until database is available")
 
     uvicorn.run(
         "app:app",
