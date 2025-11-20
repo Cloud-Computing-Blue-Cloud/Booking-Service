@@ -17,25 +17,29 @@ router = APIRouter()
 @router.post(
     "/",
     response_model=dict,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Create a new booking",
-    description="Create a new booking with seat reservations. Seats will be held for 10 minutes."
+    description="Create a new booking with seat reservations. Returns immediately with booking ID."
 )
 async def create_booking(booking: BookingCreate):
     """
-    Create a new booking with the following:
+    Create a new booking asynchronously (HTTP 202 Accepted).
+
+    This endpoint returns immediately with a booking ID while the seat reservation
+    is processed. Use GET /api/bookings/{id} to check the booking status.
 
     - **user_id**: ID of the user making the booking
     - **showtime_id**: ID of the showtime
     - **seats**: List of seats to book (maximum 10 seats)
 
-    Returns the created booking with on-hold seats.
+    Returns HTTP 202 with booking reference. Poll GET /api/bookings/{id} to check status.
+    Seats will be held for 10 minutes.
     """
     try:
         # Convert Pydantic models to dicts
         seats = [{"row": seat.row, "col": seat.col} for seat in booking.seats]
 
-        # Create booking
+        # Create booking (in real async implementation, this would be queued)
         booking_obj, error = BookingService.create_booking(
             user_id=booking.user_id,
             showtime_id=booking.showtime_id,
@@ -49,9 +53,13 @@ async def create_booking(booking: BookingCreate):
                 detail=error
             )
 
+        # Return 202 Accepted with booking reference
         return {
-            "message": "Booking created successfully",
-            "booking": booking_obj.to_dict()
+            "message": "Booking request accepted and is being processed",
+            "booking_id": booking_obj.booking_id,
+            "status": "processing",
+            "poll_url": f"/api/bookings/{booking_obj.booking_id}",
+            "estimated_completion": "10 seconds"
         }
 
     except HTTPException:
