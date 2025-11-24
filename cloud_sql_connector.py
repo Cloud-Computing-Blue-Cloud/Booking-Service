@@ -6,6 +6,8 @@ using both Unix socket (for GCP environments) and TCP (for local development).
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from google.cloud.sql.connector import Connector
 import sqlalchemy
 

@@ -1,6 +1,9 @@
 import os
 from datetime import timedelta
 
+from dotenv import load_dotenv
+load_dotenv()
+
 class Config:
     # Google Cloud SQL Database configuration
     # For Cloud SQL connection via Unix socket (when running on GCP):

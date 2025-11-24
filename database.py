@@ -9,6 +9,9 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 from config import Config
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Create engine
 # --- CONFIGURATION START ---
 DB_USER = os.getenv("DB_USER", "transactions-db-user")
