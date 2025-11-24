@@ -1,5 +1,4 @@
 from routers.booking_routes import router as booking_router
 from routers.payment_routes import router as payment_router
-from routers.showtime_routes import router as showtime_router
 
-__all__ = ['booking_router', 'payment_router', 'showtime_router']
+__all__ = ['booking_router', 'payment_router']

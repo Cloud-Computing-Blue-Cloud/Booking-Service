@@ -4,11 +4,10 @@ FastAPI router for booking endpoints
 
 from fastapi import APIRouter, HTTPException, status
 from schemas import (
-    BookingCreate, BookingResponse, BookingConfirm, BookingUpdate,
-    MessageResponse, BookingCompleteResponse, UserBookingsResponse
+    BookingCreate, BookingResponse, BookingUpdate,
+    MessageResponse, UserBookingsResponse
 )
 from services.booking_service import BookingService
-from services.payment_service import PaymentService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,9 +20,9 @@ router = APIRouter()
     summary="Create a new booking",
     description="Create a new booking with seat reservations. Returns immediately with booking ID."
 )
-async def create_booking(booking: BookingCreate):
+def create_booking(booking: BookingCreate):
     """
-    Create a new booking asynchronously (HTTP 202 Accepted).
+    Create a new booking (HTTP 202 Accepted).
 
     This endpoint returns immediately with a booking ID while the seat reservation
     is processed. Use GET /api/bookings/{id} to check the booking status.
@@ -39,12 +38,15 @@ async def create_booking(booking: BookingCreate):
         # Convert Pydantic models to dicts
         seats = [{"row": seat.row, "col": seat.col} for seat in booking.seats]
 
-        # Create booking (in real async implementation, this would be queued)
+        # TODO: Get created_by from authenticated user context
+        created_by = 1  # Hardcoded for now, should be from auth
+
+        # Create booking
         booking_obj, error = BookingService.create_booking(
             user_id=booking.user_id,
             showtime_id=booking.showtime_id,
             seats=seats,
-            created_by=booking.user_id
+            created_by=created_by
         )
 
         if error:
@@ -77,7 +79,7 @@ async def create_booking(booking: BookingCreate):
     summary="Get booking details",
     description="Retrieve details of a specific booking by ID"
 )
-async def get_booking(booking_id: int):
+def get_booking(booking_id: int):
     """
     Get booking details including:
     - Booking information
@@ -110,7 +112,7 @@ async def get_booking(booking_id: int):
     summary="Get user's bookings",
     description="Retrieve all bookings for a specific user"
 )
-async def get_user_bookings(
+def get_user_bookings(
     user_id: int,
     include_cancelled: bool = False
 ):
@@ -134,161 +136,23 @@ async def get_user_bookings(
             detail="Internal server error"
         )
 
-@router.post(
-    "/{booking_id}/confirm",
-    response_model=MessageResponse,
-    summary="Confirm booking",
-    description="Confirm a booking after successful payment"
-)
-async def confirm_booking(booking_id: int, confirm: BookingConfirm):
-    """
-    Confirm a booking with a payment.
-
-    - **booking_id**: ID of the booking to confirm
-    - **payment_id**: ID of the completed payment
-    """
-    try:
-        success, message = BookingService.confirm_booking(
-            booking_id,
-            confirm.payment_id
-        )
-
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message
-            )
-
-        return {"message": message}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in confirm_booking: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
-
-@router.post(
-    "/{booking_id}/cancel",
-    response_model=MessageResponse,
-    summary="Cancel booking",
-    description="Cancel a booking and release seats"
-)
-async def cancel_booking(booking_id: int):
-    """
-    Cancel a booking.
-
-    This will:
-    - Update booking status to 'cancelled'
-    - Release all held/booked seats
-    - Refund payment if exists
-    """
-    try:
-        success, message = BookingService.cancel_booking(booking_id)
-
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message
-            )
-
-        return {"message": message}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in cancel_booking: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
-
-@router.post(
-    "/{booking_id}/complete",
-    response_model=BookingCompleteResponse,
-    summary="Complete booking",
-    description="One-step: Create payment, process it, and confirm booking"
-)
-async def complete_booking(booking_id: int):
-    """
-    Complete booking in one step:
-
-    1. Calculate booking amount
-    2. Create payment
-    3. Process payment
-    4. Confirm booking
-
-    Returns the completed booking and payment details.
-    """
-    try:
-        # Get booking
-        booking = BookingService.get_booking(booking_id)
-        if not booking:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Booking not found"
-            )
-
-        # Calculate amount
-        num_seats = booking.booked_seats.filter_by(is_deleted=False).count()
-        amount = PaymentService.calculate_booking_amount(num_seats)
-
-        # Create payment
-        payment, error = PaymentService.create_payment(amount, booking.user_id)
-        if error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error
-            )
-
-        # Process payment
-        success, message = PaymentService.process_payment(payment.payment_id)
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message
-            )
-
-        # Confirm booking
-        success, message = BookingService.confirm_booking(
-            booking_id,
-            payment.payment_id
-        )
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message
-            )
-
-        return {
-            "message": "Booking completed successfully",
-            "booking": booking.to_dict(),
-            "payment": payment.to_dict()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in complete_booking: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
-
 @router.put(
     "/{booking_id}",
     response_model=dict,
     summary="Update booking",
     description="Update booking details (status, payment_id)"
 )
-async def update_booking(booking_id: int, booking_update: BookingUpdate):
+def update_booking(booking_id: int, booking_update: BookingUpdate):
     """
     Update a booking.
+    
+    This is the primary endpoint for state transitions:
+    - Confirming a booking (status='confirmed', payment_id=...)
+    - Failing a booking (status='failed')
+    - Cancelling a booking (status='cancelled')
 
     - **booking_id**: ID of the booking to update
-    - **status**: New status (pending, confirmed, cancelled) - optional
+    - **status**: New status (pending, confirmed, cancelled, failed) - optional
     - **payment_id**: Payment ID to associate with booking - optional
 
     Only provided fields will be updated.
@@ -306,6 +170,10 @@ async def update_booking(booking_id: int, booking_update: BookingUpdate):
                 detail=result
             )
 
+        # Result is either a message (if failed) or booking object (if success)
+        # Wait, update_booking returns (success, booking/message)
+        # If success, result is booking object.
+        
         return {
             "message": "Booking updated successfully",
             "booking": result.to_dict()
@@ -326,7 +194,7 @@ async def update_booking(booking_id: int, booking_update: BookingUpdate):
     summary="Delete booking",
     description="Soft delete a booking and release seats"
 )
-async def delete_booking_endpoint(booking_id: int):
+def delete_booking_endpoint(booking_id: int):
     """
     Delete a booking (soft delete).
 

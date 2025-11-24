@@ -21,9 +21,9 @@ def deprecated(reason: str = "This endpoint is deprecated"):
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs):
             # Could log deprecation warning here
-            return await func(*args, **kwargs)
+            return func(*args, **kwargs)
         return wrapper
     return decorator
 

@@ -11,7 +11,7 @@ import logging
 
 from config import Config
 from database import db
-from routers import booking_router, payment_router, showtime_router
+from routers import booking_router, payment_router      
 from schemas import HealthResponse
 
 # Configure logging
@@ -79,7 +79,7 @@ app.add_middleware(
 
 # Custom exception handlers
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors"""
     errors = []
     for error in exc.errors():
@@ -96,7 +96,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
+def general_exception_handler(request: Request, exc: Exception):
     """Handle unexpected errors"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
@@ -117,12 +117,6 @@ app.include_router(
     tags=["Payments"]
 )
 
-app.include_router(
-    showtime_router,
-    prefix="/api/showtimes",
-    tags=["Showtimes & Seats"]
-)
-
 # Health check endpoint
 @app.get(
     "/health",
@@ -131,7 +125,7 @@ app.include_router(
     summary="Health check",
     description="Check if the service is running"
 )
-async def health_check():
+def health_check():
     """
     Health check endpoint.
 
@@ -148,7 +142,7 @@ async def health_check():
     tags=["Info"],
     summary="API information"
 )
-async def root():
+def root():
     """
     Get API information and available endpoints.
     """

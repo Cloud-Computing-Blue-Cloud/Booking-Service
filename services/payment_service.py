@@ -1,17 +1,21 @@
 from database import db
 from models.payment import Payment
 import logging
+import requests
+from config import Config
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class PaymentService:
     @staticmethod
-    def create_payment(amount, created_by=None):
+    def create_payment(amount, booking_id, created_by=None):
         """
         Create a new payment record
 
         Args:
             amount: Payment amount
+            booking_id: ID of the booking
             created_by: ID of the user creating this record
 
         Returns:
@@ -21,11 +25,26 @@ class PaymentService:
             if amount <= 0:
                 return None, "Invalid payment amount"
 
+            # Verify booking exists
+            from services.booking_service import BookingService
+            booking = BookingService.get_booking(booking_id)
+            if not booking:
+                return None, "Booking not found"
+            
+            if booking.payment_id:
+                return None, "Booking already has a payment associated"
+
             payment = Payment(amount=amount, created_by=created_by)
             db.session.add(payment)
+            db.session.flush() # get ID
+
+            # Link payment to booking
+            booking.payment_id = payment.payment_id
+            booking.updated_at = datetime.utcnow()
+            
             db.session.commit()
 
-            logger.info(f"Payment created: {payment.payment_id}")
+            logger.info(f"Payment created: {payment.payment_id} for booking {booking_id}")
             return payment, None
 
         except Exception as e:
@@ -60,6 +79,32 @@ class PaymentService:
             # Simulate payment processing
             # In real implementation, this would integrate with payment gateway
             payment.complete()
+            
+            # Confirm the booking
+            from services.booking_service import BookingService
+            # Find booking associated with this payment
+            from models.booking import Booking
+            booking = Booking.query.filter_by(payment_id=payment_id).first()
+            
+            if booking:
+                # Use update_booking to confirm
+                success, msg = BookingService.update_booking(
+                    booking.booking_id, 
+                    status='confirmed', 
+                    payment_id=payment_id
+                )
+                if not success:
+                    # If booking confirmation fails, we might want to fail the payment or log it
+                    # For now, we'll rollback the payment completion? 
+                    # Or just return error. The requirement says "Once payment is complete... confirm booking"
+                    # If confirmation fails, we should probably fail the payment too or handle it.
+                    # But confirm_booking commits its own transaction.
+                    # Let's try to confirm.
+                    logger.error(f"Payment {payment_id} processed but booking confirmation failed: {msg}")
+                    # We should probably fail the payment if booking confirmation fails
+                    db.session.rollback()
+                    return False, f"Payment processed but booking confirmation failed: {msg}"
+
             db.session.commit()
 
             logger.info(f"Payment processed: {payment_id}")
@@ -87,6 +132,15 @@ class PaymentService:
                 return False, "Payment not found"
 
             payment.fail()
+            
+            # Fail the associated booking
+            from models.booking import Booking
+            from services.booking_service import BookingService
+            
+            booking = Booking.query.filter_by(payment_id=payment_id).first()
+            if booking:
+                BookingService.update_booking(booking.booking_id, status='failed')
+
             db.session.commit()
 
             logger.info(f"Payment failed: {payment_id}")

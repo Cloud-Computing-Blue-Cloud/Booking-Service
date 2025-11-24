@@ -14,19 +14,13 @@ from decimal import Decimal
 
 class SeatBase(BaseModel):
     """Base seat schema"""
-    row: str = Field(..., description="Seat row (A-Z)")
+    row: int = Field(..., gt=0, description="Seat row number (positive integer)")
     col: int = Field(..., gt=0, description="Seat column number (positive integer)")
-
-    @validator('row')
-    def validate_row(cls, v):
-        if not v or len(v) != 1 or not v.isalpha():
-            raise ValueError('Row must be a single letter (A-Z)')
-        return v.upper()
 
     class Config:
         json_schema_extra = {
             "example": {
-                "row": "A",
+                "row": 1,
                 "col": 1
             }
         }
@@ -68,8 +62,8 @@ class BookingCreate(BaseModel):
                 "user_id": 1,
                 "showtime_id": 1,
                 "seats": [
-                    {"row": "A", "col": 1},
-                    {"row": "A", "col": 2}
+                    {"row": 1, "col": 1},
+                    {"row": 1, "col": 2}
                 ]
             }
         }
@@ -119,14 +113,14 @@ class BookingUpdate(BaseModel):
 
 class PaymentCreate(BaseModel):
     """Schema for creating a payment"""
+    booking_id: int = Field(..., gt=0, description="Booking ID for this payment")
     amount: float = Field(..., gt=0, le=100000, description="Payment amount")
-    created_by: Optional[int] = Field(None, gt=0, description="User creating the payment")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "amount": 20.00,
-                "created_by": 1
+                "booking_id": 1,
+                "amount": 20.00
             }
         }
 
@@ -167,8 +161,8 @@ class SeatAvailabilityCheck(BaseModel):
         json_schema_extra = {
             "example": {
                 "seats": [
-                    {"row": "A", "col": 1},
-                    {"row": "A", "col": 2}
+                    {"row": 1, "col": 1},
+                    {"row": 1, "col": 2}
                 ]
             }
         }
@@ -180,7 +174,7 @@ class SeatAvailabilityResponse(BaseModel):
 
 class SeatMapItem(BaseModel):
     """Individual seat in seat map"""
-    row: str
+    row: int
     col: int
     available: bool
 

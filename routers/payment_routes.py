@@ -17,7 +17,7 @@ router = APIRouter()
     summary="Create a payment",
     description="Create a new payment record"
 )
-async def create_payment(payment: PaymentCreate):
+def create_payment(payment: PaymentCreate):
     """
     Create a new payment.
 
@@ -25,9 +25,13 @@ async def create_payment(payment: PaymentCreate):
     - **created_by**: User ID creating the payment (optional)
     """
     try:
+        # TODO: Get created_by from authenticated user context
+        created_by = 1  # Hardcoded for now, should be from auth
+        
         payment_obj, error = PaymentService.create_payment(
             amount=payment.amount,
-            created_by=payment.created_by
+            booking_id=payment.booking_id,
+            created_by=created_by
         )
 
         if error:
@@ -56,7 +60,7 @@ async def create_payment(payment: PaymentCreate):
     summary="Get payment details",
     description="Retrieve payment information by ID"
 )
-async def get_payment(payment_id: int):
+def get_payment(payment_id: int):
     """
     Get payment details.
 
@@ -88,7 +92,7 @@ async def get_payment(payment_id: int):
     summary="Process payment",
     description="Process a pending payment (simulated gateway)"
 )
-async def process_payment(payment_id: int):
+def process_payment(payment_id: int):
     """
     Process a payment.
 
@@ -121,7 +125,7 @@ async def process_payment(payment_id: int):
     summary="Mark payment as failed",
     description="Mark a payment as failed"
 )
-async def fail_payment(payment_id: int):
+def fail_payment(payment_id: int):
     """
     Mark payment as failed.
 
@@ -153,7 +157,7 @@ async def fail_payment(payment_id: int):
     summary="Refund payment",
     description="Refund a completed payment"
 )
-async def refund_payment(payment_id: int):
+def refund_payment(payment_id: int):
     """
     Refund a payment.
 
@@ -185,7 +189,7 @@ async def refund_payment(payment_id: int):
     summary="Update payment",
     description="Update payment details (amount, status)"
 )
-async def update_payment(payment_id: int, payment_update: PaymentUpdate):
+def update_payment(payment_id: int, payment_update: PaymentUpdate):
     """
     Update a payment.
 
@@ -228,7 +232,7 @@ async def update_payment(payment_id: int, payment_update: PaymentUpdate):
     summary="Delete payment",
     description="Soft delete a payment record"
 )
-async def delete_payment_endpoint(payment_id: int):
+def delete_payment_endpoint(payment_id: int):
     """
     Delete a payment (soft delete).
 

@@ -1,11 +1,13 @@
 from database import db
 from models.booking import Booking
 from models.booked_seat import BookedSeat
-from models.showtime import Showtime
+
 from services.seat_service import SeatService
 from services.payment_service import PaymentService
 from datetime import datetime
 import logging
+import requests
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,18 @@ class BookingService:
             tuple: (booking object, error message or None)
         """
         try:
+            # Validate showtime exists in TheatreService
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            try:
+                resp = requests.get(f"{theatre_url}/showtimes/{showtime_id}", timeout=5)
+            except requests.RequestException as exc:
+                return None, f"Theatre service unavailable: {exc}"
+
+            if resp.status_code == 404:
+                return None, f"Showtime {showtime_id} not found"
+            if resp.status_code >= 400:
+                return None, f"Theatre service error: {resp.status_code}"
+
             # Validate seats availability
             is_available, message = SeatService.check_seats_availability(showtime_id, seats)
             if not is_available:
@@ -41,15 +55,12 @@ class BookingService:
                     booking_id=booking.booking_id,
                     showtime_id=showtime_id,
                     seat_row=seat['row'],
-                    seat_col=seat['col']
+                    seat_col=seat['col'],
+                    created_by=created_by
                 )
                 db.session.add(booked_seat)
 
-            # Update showtime seats count
-            showtime = Showtime.query.get(showtime_id)
-            if showtime:
-                showtime.increment_booked_seats(len(seats))
-
+            # Commit booking and seat holds (do NOT increment theatre's booked count yet)
             db.session.commit()
             logger.info(f"Booking created: {booking.booking_id} for user {user_id}")
             return booking, None
@@ -100,12 +111,30 @@ class BookingService:
             if not payment or payment.status != 'completed':
                 return False, "Invalid or incomplete payment"
 
-            # Update booking
+            # Calculate number of seats to confirm
+            seats = booking.booked_seats.filter_by(is_deleted=False).all()
+            num_seats = len(seats)
+
+            # Attempt to increment booked seats in TheatreService first
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            try:
+                resp = requests.post(
+                    f"{theatre_url}/showtimes/{booking.showtime_id}/seats",
+                    json={"count": num_seats},
+                    timeout=5
+                )
+            except requests.RequestException as exc:
+                db.session.rollback()
+                return False, f"Theatre service unavailable: {exc}"
+
+            if resp.status_code >= 400:
+                db.session.rollback()
+                return False, f"Failed to update theatre showtime seats: {resp.status_code}"
+
+            # Update booking locally and confirm seats
             booking.payment_id = payment_id
             booking.confirm()
-
-            # Confirm all seats
-            for seat in booking.booked_seats.filter_by(is_deleted=False).all():
+            for seat in seats:
                 seat.confirm()
 
             db.session.commit()
@@ -140,10 +169,19 @@ class BookingService:
             seats_count = booking.booked_seats.filter_by(is_deleted=False).count()
             booking.cancel()
 
-            # Update showtime seats count
-            showtime = Showtime.query.get(booking.showtime_id)
-            if showtime:
-                showtime.decrement_booked_seats(seats_count)
+            # Attempt to decrement booked seats in TheatreService if seats were previously confirmed
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            try:
+                # send negative count to release
+                resp = requests.post(
+                    f"{theatre_url}/showtimes/{booking.showtime_id}/seats",
+                    json={"count": -seats_count},
+                    timeout=5
+                )
+                if resp.status_code >= 400:
+                    logger.warning(f"Failed to update theatre seats on cancel: {resp.status_code}")
+            except requests.RequestException:
+                logger.warning("Could not reach theatre service to update seats on cancel")
 
             # Refund payment if exists
             if booking.payment_id:
@@ -157,6 +195,58 @@ class BookingService:
             db.session.rollback()
             logger.error(f"Error cancelling booking: {str(e)}")
             return False, f"Failed to cancel booking: {str(e)}"
+
+    @staticmethod
+    def fail_booking(booking_id):
+        """
+        Mark a booking as failed and release seats (used for payment failure)
+
+        Args:
+            booking_id: ID of the booking to fail
+
+        Returns:
+            tuple: (success boolean, message)
+        """
+        try:
+            booking = BookingService.get_booking(booking_id)
+            if not booking:
+                return False, "Booking not found"
+
+            if booking.status == 'failed':
+                return False, "Booking is already failed"
+
+            # Fail booking and release seats
+            seats_count = booking.booked_seats.filter_by(is_deleted=False).count()
+            
+            booking.status = 'failed'
+            booking.updated_at = datetime.utcnow()
+            
+            # Release seats
+            for seat in booking.booked_seats.filter_by(is_deleted=False).all():
+                seat.release()
+
+            # Attempt to decrement booked seats in TheatreService
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            try:
+                # send negative count to release
+                resp = requests.post(
+                    f"{theatre_url}/showtimes/{booking.showtime_id}/seats",
+                    json={"count": -seats_count},
+                    timeout=5
+                )
+                if resp.status_code >= 400:
+                    logger.warning(f"Failed to update theatre seats on failure: {resp.status_code}")
+            except requests.RequestException:
+                logger.warning("Could not reach theatre service to update seats on failure")
+
+            db.session.commit()
+            logger.info(f"Booking failed: {booking_id}")
+            return True, "Booking marked as failed successfully"
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error failing booking: {str(e)}")
+            return False, f"Failed to fail booking: {str(e)}"
 
     @staticmethod
     def release_expired_holds():
@@ -206,16 +296,37 @@ class BookingService:
             if not booking:
                 return False, "Booking not found"
 
-            if status:
-                valid_statuses = ['pending', 'confirmed', 'cancelled']
-                if status not in valid_statuses:
-                    return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-                booking.status = status
-                booking.updated_at = datetime.utcnow()
+
 
             if payment_id:
                 booking.payment_id = payment_id
                 booking.updated_at = datetime.utcnow()
+                db.session.flush()
+
+            if status:
+                valid_statuses = ['pending', 'confirmed', 'cancelled', 'failed']
+                if status not in valid_statuses:
+                    return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+                
+                # Handle status transitions with side effects
+                if status == 'confirmed' and booking.status != 'confirmed':
+                    # Use internal confirm logic
+                    # We need to pass payment_id if it was just updated
+                    current_payment_id = payment_id or booking.payment_id
+                    if not current_payment_id:
+                        return False, "Cannot confirm booking without payment ID"
+                    return BookingService.confirm_booking(booking_id, current_payment_id)
+                
+                elif status == 'failed' and booking.status != 'failed':
+                    return BookingService.fail_booking(booking_id)
+                
+                elif status == 'cancelled' and booking.status != 'cancelled':
+                    return BookingService.cancel_booking(booking_id)
+                
+                else:
+                    # Just update status if no specific transition logic needed (e.g. back to pending?)
+                    booking.status = status
+                    booking.updated_at = datetime.utcnow()
 
             db.session.commit()
             logger.info(f"Booking updated: {booking_id}")
@@ -254,10 +365,18 @@ class BookingService:
             for seat in booking.booked_seats.filter_by(is_deleted=False).all():
                 seat.release()
 
-            # Update showtime seats count
-            showtime = Showtime.query.get(booking.showtime_id)
-            if showtime:
-                showtime.decrement_booked_seats(seats_count)
+            # Attempt to decrement booked seats in TheatreService (best-effort)
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            try:
+                resp = requests.post(
+                    f"{theatre_url}/showtimes/{booking.showtime_id}/seats",
+                    json={"count": -seats_count},
+                    timeout=5
+                )
+                if resp.status_code >= 400:
+                    logger.warning(f"Failed to update theatre seats on delete: {resp.status_code}")
+            except requests.RequestException:
+                logger.warning("Could not reach theatre service to update seats on delete")
 
             db.session.commit()
             logger.info(f"Booking deleted: {booking_id}")

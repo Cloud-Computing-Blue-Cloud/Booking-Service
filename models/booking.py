@@ -9,16 +9,16 @@ class Booking(Base, BaseModel):
     booking_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, nullable=False, index=True)
     showtime_id = Column(Integer, nullable=False, index=True)
-    payment_id = Column(Integer, nullable=True)
+    payment_id = Column(Integer, ForeignKey('payments.payment_id'), nullable=True)
     booking_time = Column(DateTime, nullable=False, default=datetime.utcnow)
-    status = Column(String(50), nullable=False, default='pending')  # pending, confirmed, cancelled
+    status = Column(String(50), nullable=False, default='pending')  # pending, confirmed, cancelled, failed
     created_by = Column(Integer, nullable=True)
 
     # Relationships
     booked_seats = relationship('BookedSeat', backref='booking', lazy='dynamic',
                                foreign_keys='BookedSeat.booking_id')
     payment = relationship('Payment', backref='booking', uselist=False,
-                          foreign_keys='Payment.payment_id')
+                          foreign_keys=[payment_id])
 
     def __init__(self, user_id, showtime_id, created_by=None):
         self.user_id = user_id

@@ -2,17 +2,37 @@
 Database setup for FastAPI with SQLAlchemy
 """
 
-from sqlalchemy import create_engine, Column, DateTime, Boolean
+from sqlalchemy import create_engine, Column, DateTime, Boolean, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 from config import Config
 
 # Create engine
+# --- CONFIGURATION START ---
+DB_USER = "transactions-db-user"
+DB_PASSWORD = ""     
+DB_HOST = "34.132.246.96"          
+DB_PORT = "3306"
+DB_NAME = "transactions"         
+
+# Connection String Format: dialect+driver://username:password@host:port/database
+DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Allow override for testing (e.g. sqlite)
+# if hasattr(Config, 'SQLALCHEMY_DATABASE_URI') and Config.SQLALCHEMY_DATABASE_URI and Config.SQLALCHEMY_DATABASE_URI.startswith('sqlite'):
+#     DATABASE_URI = Config.SQLALCHEMY_DATABASE_URI
+# --- CONFIGURATION END ---
+
+# Create engine
 engine = create_engine(
-    Config.SQLALCHEMY_DATABASE_URI,
-    **Config.SQLALCHEMY_ENGINE_OPTIONS,
-    echo=Config.SQLALCHEMY_ECHO
+    DATABASE_URI,
+    # 'pool_pre_ping' is crucial for Cloud SQL to handle dropped connections automatically
+    pool_pre_ping=True, 
+    # Recycles connections before the cloud firewall cuts them off
+    pool_recycle=1800, 
+    # Set to True to see raw SQL queries in your terminal (great for debugging)
+    echo=True  
 )
 
 # Create session factory
@@ -56,6 +76,7 @@ class BaseModel:
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_deleted = Column(Boolean, nullable=False, default=False)
     deleted_at = Column(DateTime, nullable=True)
+    created_by = Column(Integer, nullable=False)
 
     def soft_delete(self):
         """Soft delete the record"""
