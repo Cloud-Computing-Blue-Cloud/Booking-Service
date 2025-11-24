@@ -2,6 +2,7 @@
 Database setup for FastAPI with SQLAlchemy
 """
 
+import os
 from sqlalchemy import create_engine, Column, DateTime, Boolean, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -10,11 +11,11 @@ from config import Config
 
 # Create engine
 # --- CONFIGURATION START ---
-DB_USER = "transactions-db-user"
-DB_PASSWORD = ""     
-DB_HOST = "34.132.246.96"          
-DB_PORT = "3306"
-DB_NAME = "transactions"         
+DB_USER = os.getenv("DB_USER", "transactions-db-user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")     
+DB_HOST = os.getenv("DB_HOST", "34.132.246.96")          
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME", "transactions")         
 
 # Connection String Format: dialect+driver://username:password@host:port/database
 DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
