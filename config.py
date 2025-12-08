@@ -36,7 +36,7 @@ class Config:
 
     # External services
     MOVIE_SERVICE_URL = os.getenv('MOVIE_SERVICE_URL', 'http://localhost:5001')
-    THEATRE_SERVICE_URL = os.getenv('THEATRE_SERVICE_URL', 'http://localhost:8001')
+    THEATRE_SERVICE_URL = os.getenv('THEATRE_SERVICE_URL', 'http://localhost:5002')
     USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5004')
 
     # CORS
