@@ -8,4 +8,5 @@ requests==2.31.0
 cloud-sql-python-connector[pg8000]==1.4.3
 pymysql==1.1.0
 dotenv==0.9.9
-python-dotenv==1.2.1
+python-dotenv==1.0.0
+google-cloud-pubsub==2.19.0

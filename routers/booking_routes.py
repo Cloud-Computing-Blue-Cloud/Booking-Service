@@ -75,6 +75,81 @@ async def simulate_payment_processing(booking_id: int):
         
         if success:
             logger.info(f"Payment simulation successful for booking {booking_id}")
+            
+            # --- Pub/Sub Integration ---
+            try:
+                import json
+                from google.cloud import pubsub_v1
+                
+                # Fetch detailed info for the event
+                movie_title = "Unknown Movie"
+                start_time = "Unknown Time"
+                user_email = "unknown@example.com"
+                
+                # 1. Fetch User Email
+                try:
+                    user_url = Config.USER_SERVICE_URL.rstrip("/")
+                    u_resp = requests.get(f"{user_url}/users/{booking.user_id}", timeout=5)
+                    if u_resp.status_code == 200:
+                        user_data = u_resp.json()
+                        user_email = user_data.get('email', user_email)
+                    else:
+                        logger.warning(f"Failed to fetch user {booking.user_id}: {u_resp.status_code}")
+                except Exception as e:
+                    logger.warning(f"Could not fetch user email: {e}")
+
+                # We already have showtime_data from price fetch?
+                # If not, fetch it again or move the fetch up scope
+                if 'showtime_data' not in locals():
+                    try:
+                        theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+                        resp = requests.get(f"{theatre_url}/showtimes/{booking.showtime_id}", timeout=5)
+                        if resp.status_code == 200:
+                            showtime_data = resp.json()
+                    except:
+                        showtime_data = {}
+
+                if 'showtime_data' in locals():
+                    start_time = showtime_data.get('start_time', start_time)
+                    movie_id = showtime_data.get('movie_id')
+                    
+                    if movie_id:
+                        try:
+                            movie_url = Config.MOVIE_SERVICE_URL.rstrip("/")
+                            m_resp = requests.get(f"{movie_url}/movies/{movie_id}", timeout=5)
+                            if m_resp.status_code == 200:
+                                movie_title = m_resp.json().get('title', movie_title)
+                        except Exception as e:
+                            logger.warning(f"Could not fetch movie title: {e}")
+
+                # Prepare event data
+                event_data = {
+                    "booking_id": booking_id,
+                    "email": user_email,
+                    "movie": movie_title,
+                    "showtime": start_time,
+                    "amount": float(total_amount),
+                    "status": "confirmed",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+                # Publish
+                project_id = Config.GOOGLE_CLOUD_PROJECT
+                topic_id = Config.PUBSUB_TOPIC_ID
+                
+                if project_id and topic_id and project_id != 'your-project-id':
+                    publisher = pubsub_v1.PublisherClient()
+                    topic_path = publisher.topic_path(project_id, topic_id)
+                    message_bytes = json.dumps(event_data).encode("utf-8")
+                    future = publisher.publish(topic_path, message_bytes)
+                    logger.info(f"Event published to topic {topic_id}! Message ID: {future.result()}")
+                else:
+                    logger.warning("Pub/Sub project/topic not configured, skipping publish")
+                    
+            except Exception as e:
+                logger.error(f"Failed to publish to Pub/Sub: {e}")
+            # ---------------------------
+
         else:
             logger.error(f"Payment simulation failed for booking {booking_id}: {result}")
             

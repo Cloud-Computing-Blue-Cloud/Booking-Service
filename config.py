@@ -39,6 +39,10 @@ class Config:
     THEATRE_SERVICE_URL = os.getenv('THEATRE_SERVICE_URL', 'http://localhost:5002')
     USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://localhost:5004')
 
+    # Pub/Sub Configuration
+    GOOGLE_CLOUD_PROJECT = os.getenv('GOOGLE_CLOUD_PROJECT', 'your-project-id')
+    PUBSUB_TOPIC_ID = os.getenv('PUBSUB_TOPIC_ID', 'booking-events')
+
     # CORS
     CORS_HEADERS = 'Content-Type'
 
