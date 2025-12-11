@@ -2,7 +2,9 @@
 FastAPI router for booking endpoints
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+import asyncio
+import random
 from schemas import (
     BookingCreate, BookingResponse, BookingUpdate,
     MessageResponse, UserBookingsResponse
@@ -13,6 +15,33 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+async def simulate_payment_processing(booking_id: int):
+    """
+    Simulate payment processing delay and auto-confirm booking.
+    This is for demonstration purposes to support UI polling.
+    """
+    try:
+        delay = random.randint(3, 10)
+        logger.info(f"Starting payment simulation for booking {booking_id} with {delay}s delay")
+        await asyncio.sleep(delay)
+        
+        # Mock payment ID (e.g. 999 + booking_id)
+        mock_payment_id = 999000 + booking_id
+        
+        success, result = BookingService.update_booking(
+            booking_id,
+            status='confirmed',
+            payment_id=mock_payment_id
+        )
+        
+        if success:
+            logger.info(f"Payment simulation successful for booking {booking_id}")
+        else:
+            logger.error(f"Payment simulation failed for booking {booking_id}: {result}")
+            
+    except Exception as e:
+        logger.error(f"Error in payment simulation for booking {booking_id}: {str(e)}")
+
 @router.post(
     "/",
     response_model=dict,
@@ -20,7 +49,7 @@ router = APIRouter()
     summary="Create a new booking",
     description="Create a new booking with seat reservations. Returns immediately with booking ID."
 )
-def create_booking(booking: BookingCreate):
+def create_booking(booking: BookingCreate, background_tasks: BackgroundTasks):
     """
     Create a new booking (HTTP 202 Accepted).
 
@@ -56,12 +85,16 @@ def create_booking(booking: BookingCreate):
             )
 
         # Return 202 Accepted with booking reference
+        
+        # Schedule background payment simulation
+        background_tasks.add_task(simulate_payment_processing, booking_obj.booking_id)
+
         return {
             "message": "Booking request accepted and is being processed",
             "booking_id": booking_obj.booking_id,
             "status": "processing",
             "poll_url": f"/api/bookings/{booking_obj.booking_id}",
-            "estimated_completion": "10 seconds"
+            "estimated_completion": "3-10 seconds"
         }
 
     except HTTPException:
