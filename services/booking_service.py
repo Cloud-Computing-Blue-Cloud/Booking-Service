@@ -87,6 +87,32 @@ class BookingService:
         return query.order_by(Booking.booking_time.desc()).all()
 
     @staticmethod
+    def get_showtime_seats(showtime_id):
+        """
+        Get all booked/held seats for a showtime
+        
+        Args:
+            showtime_id: ID of the showtime
+            
+        Returns:
+            list: List of dicts with seat info
+        """
+        seats = BookedSeat.query.filter_by(
+            showtime_id=showtime_id, 
+            is_deleted=False
+        ).all()
+        
+        return [
+            {
+                "row": seat.seat_row,
+                "col": seat.seat_col,
+                "status": seat.status,
+                "booking_id": seat.booking_id
+            }
+            for seat in seats
+        ]
+
+    @staticmethod
     def confirm_booking(booking_id, payment_id):
         """
         Confirm a booking after successful payment

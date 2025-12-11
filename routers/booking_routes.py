@@ -101,6 +101,23 @@ def get_booking(booking_id: int):
         raise
     except Exception as e:
         logger.error(f"Error in get_booking: {str(e)}")
+
+@router.get(
+    "/showtime/{showtime_id}/seats",
+    response_model=dict,
+    summary="Get booked seats for showtime",
+    description="Retrieve all booked and held seats for a specific showtime"
+)
+def get_showtime_seats(showtime_id: int):
+    """
+    Get list of booked seats for a showtime.
+    Used by the UI to render the seat grid.
+    """
+    try:
+        seats = BookingService.get_showtime_seats(showtime_id)
+        return {"seats": seats}
+    except Exception as e:
+        logger.error(f"Error in get_showtime_seats: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

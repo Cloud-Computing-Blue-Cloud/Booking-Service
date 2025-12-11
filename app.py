@@ -11,15 +11,15 @@ import logging
 
 from config import Config
 from database import db
-from routers import booking_router, payment_router      
+from routers import booking_router, payment_router
 from schemas import HealthResponse
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -27,22 +27,28 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     # Startup
     logger.info("Starting Booking Service...")
-    logger.info(f"Database: {Config.SQLALCHEMY_DATABASE_URI.split('@')[1] if '@' in Config.SQLALCHEMY_DATABASE_URI else 'Not configured'}")
+    logger.info(
+        f"Database: {Config.SQLALCHEMY_DATABASE_URI.split('@')[1] if '@' in Config.SQLALCHEMY_DATABASE_URI else 'Not configured'}"
+    )
 
     # Create database tables
     try:
         from database import db
         from models import Booking, BookedSeat, Payment, Showtime
+
         db.create_all()
         logger.info("Database tables created/verified")
     except Exception as e:
         logger.warning(f"Could not connect to database: {e}")
-        logger.warning("Application will start, but database operations will fail until database is available")
+        logger.warning(
+            "Application will start, but database operations will fail until database is available"
+        )
 
     yield
 
     # Shutdown
     logger.info("Shutting down Booking Service...")
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -65,7 +71,7 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # CORS Middleware
@@ -76,6 +82,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Custom exception handlers
 @app.exception_handler(RequestValidationError)
@@ -89,11 +96,9 @@ def validation_exception_handler(request: Request, exc: RequestValidationError):
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": "Validation error",
-            "details": errors
-        }
+        content={"error": "Validation error", "details": errors},
     )
+
 
 @app.exception_handler(Exception)
 def general_exception_handler(request: Request, exc: Exception):
@@ -101,21 +106,15 @@ def general_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"error": "Internal server error"}
+        content={"error": "Internal server error"},
     )
 
-# Include routers
-app.include_router(
-    booking_router,
-    prefix="/api/bookings",
-    tags=["Bookings"]
-)
 
-app.include_router(
-    payment_router,
-    prefix="/api/payments",
-    tags=["Payments"]
-)
+# Include routers
+app.include_router(booking_router, prefix="/api/bookings", tags=["Bookings"])
+
+app.include_router(payment_router, prefix="/api/payments", tags=["Payments"])
+
 
 # Health check endpoint
 @app.get(
@@ -123,7 +122,7 @@ app.include_router(
     response_model=HealthResponse,
     tags=["Health"],
     summary="Health check",
-    description="Check if the service is running"
+    description="Check if the service is running",
 )
 def health_check():
     """
@@ -131,17 +130,11 @@ def health_check():
 
     Returns the service status.
     """
-    return {
-        "status": "healthy",
-        "service": "booking-service"
-    }
+    return {"status": "healthy", "service": "booking-service"}
+
 
 # Root endpoint
-@app.get(
-    "/",
-    tags=["Info"],
-    summary="API information"
-)
+@app.get("/", tags=["Info"], summary="API information")
 def root():
     """
     Get API information and available endpoints.
@@ -150,16 +143,14 @@ def root():
         "service": "Booking Service",
         "version": "2.0.0",
         "framework": "FastAPI",
-        "documentation": {
-            "swagger": "/docs",
-            "redoc": "/redoc"
-        },
+        "documentation": {"swagger": "/docs", "redoc": "/redoc"},
         "endpoints": {
             "bookings": "/api/bookings/",
             "payments": "/api/payments/",
-            "showtimes": "/api/showtimes/"
-        }
+            "showtimes": "/api/showtimes/",
+        },
     }
+
 
 # Run with uvicorn
 if __name__ == "__main__":
@@ -168,16 +159,19 @@ if __name__ == "__main__":
     # Create database tables
     try:
         from models import Booking, BookedSeat, Payment, Showtime
+
         db.create_all()
         logger.info("Database tables created/verified")
     except Exception as e:
         logger.warning(f"Could not connect to database: {e}")
-        logger.warning("Application will start, but database operations will fail until database is available")
+        logger.warning(
+            "Application will start, but database operations will fail until database is available"
+        )
 
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=5003,
         reload=True,  # Auto-reload on code changes (development only)
-        log_level="info"
+        log_level="info",
     )
