@@ -21,12 +21,51 @@ async def simulate_payment_processing(booking_id: int):
     This is for demonstration purposes to support UI polling.
     """
     try:
+        from models.payment import Payment
+        from database import db
+        import requests
+        from config import Config
+        from datetime import datetime
+        
         delay = random.randint(3, 10)
         logger.info(f"Starting payment simulation for booking {booking_id} with {delay}s delay")
         await asyncio.sleep(delay)
         
+        # 1. Get booking details to calculate amount
+        booking = BookingService.get_booking(booking_id)
+        if not booking:
+            logger.error(f"Booking {booking_id} not found for payment simulation")
+            return
+
+        # 2. Get showtime price
+        price_per_seat = 10.00 # fallback
+        try:
+            theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
+            resp = requests.get(f"{theatre_url}/showtimes/{booking.showtime_id}", timeout=5)
+            if resp.status_code == 200:
+                showtime_data = resp.json()
+                price_per_seat = showtime_data.get('price', 10.00)
+        except Exception as e:
+            logger.warning(f"Could not fetch showtime price: {e}. Using default.")
+
+        # 3. Calculate total amount
+        seat_count = booking.booked_seats.filter_by(is_deleted=False).count()
+        total_amount = float(price_per_seat) * seat_count
+
         # Mock payment ID (e.g. 999 + booking_id)
         mock_payment_id = 999000 + booking_id
+        
+        # 4. Create dummy payment record
+        # Check if it exists first to be safe (idempotency)
+        existing_payment = db.session.query(Payment).filter_by(payment_id=mock_payment_id).first()
+        if not existing_payment:
+            payment = Payment(amount=total_amount, created_by=booking.user_id)
+            payment.payment_id = mock_payment_id
+            payment.status = 'completed'
+            payment.updated_at = datetime.utcnow()
+            db.session.add(payment)
+            db.session.commit()
+            logger.info(f"Created mock payment {mock_payment_id} for booking {booking_id}")
         
         success, result = BookingService.update_booking(
             booking_id,
