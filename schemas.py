@@ -27,6 +27,10 @@ class SeatBase(BaseModel):
 
 class SeatResponse(SeatBase):
     """Seat response with booking details"""
+    # Override row/col to map from DB fields seat_row/seat_col
+    row: int = Field(..., validation_alias="seat_row")
+    col: int = Field(..., validation_alias="seat_col")
+    
     booked_seat_id: int
     booking_id: int
     showtime_id: int
