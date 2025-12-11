@@ -27,6 +27,9 @@ async def simulate_payment_processing(booking_id: int):
         from config import Config
         from datetime import datetime
         
+        # Ensure we have a fresh session to see recently committed data
+        db.session.remove()
+        
         delay = random.randint(3, 10)
         logger.info(f"Starting payment simulation for booking {booking_id} with {delay}s delay")
         await asyncio.sleep(delay)
