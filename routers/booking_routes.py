@@ -87,7 +87,7 @@ async def simulate_payment_processing(booking_id: int):
                 # Fetch detailed info for the event
                 movie_title = "Unknown Movie"
                 start_time = "Unknown Time"
-                user_email = "unknown@example.com"
+                user_email = ""
                 
                 # 1. Fetch User Email
                 try:
@@ -237,6 +237,10 @@ def get_booking(booking_id: int):
     - Payment information (if exists)
     """
     try:
+        from database import db
+        # Ensure fresh session for polling (avoids stale reads from REPEATABLE READ isolation)
+        db.session.remove()
+        
         booking = BookingService.get_booking(booking_id)
 
         if not booking:
