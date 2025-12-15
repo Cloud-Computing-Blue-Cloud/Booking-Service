@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     # Create database tables
     try:
         from database import db
-        from models import Booking, BookedSeat, Payment, Showtime
+        from models import Booking, BookedSeat, Payment
 
         db.create_all()
         logger.info("Database tables created/verified")
@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
     # Create database tables
     try:
-        from models import Booking, BookedSeat, Payment, Showtime
+        from models import Booking, BookedSeat, Payment
 
         db.create_all()
         logger.info("Database tables created/verified")
