@@ -26,6 +26,9 @@ async def simulate_payment_processing(booking_id: int):
         import requests
         from config import Config
         from datetime import datetime
+        import json
+        from google.cloud import pubsub_v1
+        from concurrent.futures import ThreadPoolExecutor
         
         # Ensure we have a fresh session to see recently committed data
         db.session.remove()
@@ -42,6 +45,7 @@ async def simulate_payment_processing(booking_id: int):
 
         # 2. Get showtime price
         price_per_seat = 10.00 # fallback
+        showtime_data = {}
         try:
             theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
             resp = requests.get(f"{theatre_url}/showtimes/{booking.showtime_id}", timeout=5)
@@ -79,51 +83,46 @@ async def simulate_payment_processing(booking_id: int):
         if success:
             logger.info(f"Payment simulation successful for booking {booking_id}")
             
-            # --- Pub/Sub Integration ---
+            # --- Pub/Sub Integration with Multithreading ---
             try:
-                import json
-                from google.cloud import pubsub_v1
-                
-                # Fetch detailed info for the event
-                movie_title = "Unknown Movie"
-                start_time = "Unknown Time"
-                user_email = ""
-                
-                # 1. Fetch User Email
-                try:
-                    user_url = Config.USER_SERVICE_URL.rstrip("/")
-                    u_resp = requests.get(f"{user_url}/users/{booking.user_id}", timeout=5)
-                    if u_resp.status_code == 200:
-                        user_data = u_resp.json()
-                        user_email = user_data.get('email', user_email)
-                    else:
-                        logger.warning(f"Failed to fetch user {booking.user_id}: {u_resp.status_code}")
-                except Exception as e:
-                    logger.warning(f"Could not fetch user email: {e}")
-
-                # We already have showtime_data from price fetch?
-                # If not, fetch it again or move the fetch up scope
-                if 'showtime_data' not in locals():
+                # Helper functions for fetching data
+                def fetch_user_email(user_id):
                     try:
-                        theatre_url = Config.THEATRE_SERVICE_URL.rstrip("/")
-                        resp = requests.get(f"{theatre_url}/showtimes/{booking.showtime_id}", timeout=5)
-                        if resp.status_code == 200:
-                            showtime_data = resp.json()
-                    except:
-                        showtime_data = {}
+                        user_url = Config.USER_SERVICE_URL.rstrip("/")
+                        u_resp = requests.get(f"{user_url}/users/{user_id}", timeout=5)
+                        if u_resp.status_code == 200:
+                            return u_resp.json().get('email', "")
+                    except Exception as e:
+                        logger.warning(f"Could not fetch user email: {e}")
+                    return ""
 
-                if 'showtime_data' in locals():
-                    start_time = showtime_data.get('start_time', start_time)
-                    movie_id = showtime_data.get('movie_id')
+                def fetch_movie_title(movie_id):
+                    if not movie_id:
+                        return "Unknown Movie"
+                    try:
+                        movie_url = Config.MOVIE_SERVICE_URL.rstrip("/")
+                        m_resp = requests.get(f"{movie_url}/movies/{movie_id}", timeout=5)
+                        if m_resp.status_code == 200:
+                            return m_resp.json().get('name', "Unknown Movie")
+                    except Exception as e:
+                        logger.warning(f"Could not fetch movie title: {e}")
+                    return "Unknown Movie"
+
+                # Prepare for parallel execution
+                movie_id = showtime_data.get('movie_id') # We likely have this from step 2
+                
+                # Use ThreadPoolExecutor to run blocking requests in parallel
+                loop = asyncio.get_event_loop()
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    # Schedule both tasks
+                    user_future = loop.run_in_executor(executor, fetch_user_email, booking.user_id)
+                    movie_future = loop.run_in_executor(executor, fetch_movie_title, movie_id)
                     
-                    if movie_id:
-                        try:
-                            movie_url = Config.MOVIE_SERVICE_URL.rstrip("/")
-                            m_resp = requests.get(f"{movie_url}/movies/{movie_id}", timeout=5)
-                            if m_resp.status_code == 200:
-                                movie_title = m_resp.json().get('title', movie_title)
-                        except Exception as e:
-                            logger.warning(f"Could not fetch movie title: {e}")
+                    # Wait for both to complete
+                    user_email = await user_future
+                    movie_title = await movie_future
+
+                start_time = showtime_data.get('start_time', "Unknown Time")
 
                 # Prepare event data
                 event_data = {
