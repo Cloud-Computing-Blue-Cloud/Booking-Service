@@ -5,11 +5,10 @@ A high-performance microservice for managing movie ticket bookings, seat reserva
 ## 🚀 Features
 
 - ✅ Create and manage bookings
-- ✅ Seat selection with temporary holds (10 minutes)
+- ✅ Seat selection 
 - ✅ Payment processing
 - ✅ Booking confirmation and cancellation
 - ✅ Real-time seat availability checking
-- ✅ Automatic release of expired seat holds
 - ✅ **Interactive API documentation** (Swagger UI)
 - ✅ **Automatic request validation** (Pydantic)
 - ✅ **Google Cloud SQL integration**
@@ -100,14 +99,14 @@ All endpoints are documented interactively at `/docs`. Quick reference:
 ### Bookings
 
 ```bash
-# Create booking
+# Create booking (202 Accepted - async processing)
 POST /api/bookings/
 {
   "user_id": 1,
   "showtime_id": 1,
   "seats": [
-    {"row": "A", "col": 1},
-    {"row": "A", "col": 2}
+    {"row": 5, "col": 3},
+    {"row": 5, "col": 4}
   ]
 }
 
@@ -134,11 +133,11 @@ POST /api/bookings/{booking_id}/complete
 ### Payments
 
 ```bash
-# Create payment
+# Create payment (201 Created - synchronous)
 POST /api/payments/
 {
-  "amount": 20.00,
-  "created_by": 1
+  "booking_id": 1,
+  "amount": 20.00
 }
 
 # Get payment details
@@ -168,11 +167,6 @@ POST /api/showtimes/{showtime_id}/check-availability
   ]
 }
 
-# Extend seat hold time
-POST /api/showtimes/booking/{booking_id}/extend-hold
-{
-  "additional_minutes": 5
-}
 ```
 
 ### Health & Info
@@ -187,10 +181,10 @@ GET /
 
 ## 🗄️ Database
 
-Uses **Google Cloud SQL (PostgreSQL)** with the following tables:
+Uses **Google Cloud SQL (MySQL)** with the following tables:
 
 - **bookings** - Main booking records
-- **booked_seats** - Individual seat reservations with hold times
+- **booked_seats** - Individual seat reservations 
 - **payments** - Payment transactions
 - **showtimes** - Reference to showtimes from Theatre Service
 
@@ -201,13 +195,16 @@ See [CLOUD_SQL_SETUP.md](CLOUD_SQL_SETUP.md) for database setup instructions.
 Edit `.env` file:
 
 ```bash
-# Google Cloud SQL
-DATABASE_URL=postgresql://user:password@PUBLIC_IP:5432/booking_db
+# Google Cloud SQL (MySQL)
+DB_USER=your_db_user
+DB_PASSWORD=your_db_password
+DB_HOST=34.132.246.96
+DB_PORT=3306
+DB_NAME=transactions
 
 # Application
 SECRET_KEY=your-secret-key
 DEBUG=True
-SEAT_HOLD_DURATION_MINUTES=10
 MAX_SEATS_PER_BOOKING=10
 
 # External Services
@@ -218,13 +215,14 @@ USER_SERVICE_URL=http://localhost:5004
 
 ## 🔄 Booking Flow
 
-1. **Create Booking** → Seats on hold (10 min timer)
-2. **User Pays** → Payment processed
-3. **Confirm Booking** → Seats permanently booked
-4. **Auto-Release** → Expired holds released automatically
+1. **Create Booking** (`POST /api/bookings/`) → Returns **202 Accepted** with booking ID
+   - Background processing handles seat reservation
+2. **Poll Status** (`GET /api/bookings/{id}`) → Check booking status
+3. **User Pays** (`POST /api/payments/`) → Returns **201 Created** with payment ID
+4. **Confirm Booking** (`POST /api/bookings/{id}/confirm`) → Seats permanently booked
 
 ### Seat States
-- `on_hold` - Temporarily reserved (10 minutes)
+- `on_hold` - Temporarily reserved (seat holding functionality exists in code)
 - `booked` - Permanently reserved after payment
 - `released` - Freed up (cancelled or expired)
 
@@ -260,13 +258,13 @@ python3 test_comprehensive.py
 # Health check
 curl http://localhost:5003/health
 
-# Create booking
-curl -X POST http://localhost:5003/api/bookings/ \
+# Create booking (returns 202 Accepted)
+curl -i -X POST http://localhost:5003/api/bookings/ \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": 1,
     "showtime_id": 1,
-    "seats": [{"row": "A", "col": 1}]
+    "seats": [{"row": 5, "col": 3}]
   }'
 ```
 
@@ -278,28 +276,7 @@ curl -X POST http://localhost:5003/api/bookings/ \
 uvicorn app:app --reload --port 5003
 ```
 
-### Production
-```bash
-# Multiple workers for better performance
-uvicorn app:app --host 0.0.0.0 --port 5003 --workers 4
-```
 
-### Google Cloud Run
-```bash
-gcloud run deploy booking-service \
-  --source . \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated
-```
-
-## 🎯 Why FastAPI?
-
-- ⚡ **Performance** - 2-3x faster than Flask
-- 📚 **Auto Documentation** - Swagger UI built-in
-- ✅ **Type Safety** - Automatic validation with Pydantic
-- 🔄 **Async Support** - Better concurrency
-- 💻 **Developer Experience** - Auto-completion and type hints
 
 ## 🤝 Integration with Other Services
 
@@ -311,38 +288,7 @@ gcloud run deploy booking-service \
 
 - **Interactive API Docs**: http://localhost:5003/docs
 - [SYSTEM_FLOW.md](SYSTEM_FLOW.md) - Complete end-to-end flow
-- [CLOUD_SQL_SETUP.md](CLOUD_SQL_SETUP.md) - Database setup guide
-- [TESTING_GUIDE.md](TESTING_GUIDE.md) - Testing instructions
-- [FASTAPI_SETUP.md](FASTAPI_SETUP.md) - FastAPI setup guide
 
-## 💡 Key Features
-
-### Automatic Validation
-```python
-# Pydantic automatically validates all requests
-class BookingCreate(BaseModel):
-    user_id: int  # Must be integer
-    showtime_id: int
-    seats: List[SeatBase]  # Max 10 seats, validated automatically
-```
-
-### Type Safety
-```python
-async def get_booking(booking_id: int):
-    # booking_id is guaranteed to be an int
-    # IDE provides auto-completion
-```
-
-### Better Error Messages
-```json
-{
-  "error": "Validation error",
-  "details": [
-    "body -> user_id: value is not a valid integer",
-    "body -> seats: ensure this value has at least 1 items"
-  ]
-}
-```
 
 ## 🔧 Development Tips
 
@@ -357,12 +303,7 @@ python3 cloud_sql_connector.py
 find . -type d -name "__pycache__" -exec rm -rf {} +
 ```
 
-## ⚠️ Notes
 
-- Seat holds automatically expire after 10 minutes (configurable)
-- Run periodic cleanup: `BookingService.release_expired_holds()`
-- Payment processing is simulated - integrate real gateway in production
-- Use `SQLALCHEMY_ECHO=True` in development to see SQL queries
 
 ## 📝 Quick Commands
 
