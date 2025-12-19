@@ -278,6 +278,30 @@ uvicorn app:app --reload --port 5003
 
 
 
+## 🔄 Concurrent Seat Validation with Multithreading
+
+The Booking Service implements concurrent execution using Python's `ThreadPoolExecutor` to optimize API calls during booking confirmation.
+
+### Implementation
+
+When a booking is confirmed and payment is processed, the service uses multithreading to fetch user details and movie details concurrently:
+
+- **Concurrent API Calls**: Uses `ThreadPoolExecutor` with 2 workers to fetch:
+  - User details (email) from User Service
+  - Movie details (title) from Movie Service
+  
+- **Independent Execution**: Since fetching user and movie details are independent operations, they execute in parallel rather than sequentially.
+
+- **Data Aggregation**: Once both API calls complete, the service aggregates the data (user email, movie title, booking details) to trigger a Google Cloud Function via Pub/Sub for sending confirmation emails.
+
+### Benefits
+
+- **Performance Improvement**: Reduces total execution time compared to sequential execution
+- **Non-blocking**: If one API call takes longer, it doesn't block the other from executing
+- **Better Resource Utilization**: Takes advantage of I/O wait time by executing independent operations concurrently
+
+**Location in code**: `routers/booking_routes.py` - `simulate_payment_processing()` function
+
 ## 🤝 Integration with Other Services
 
 - **Movie Service** (port 5001) - Movie information
